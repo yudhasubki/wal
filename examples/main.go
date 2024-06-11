@@ -10,7 +10,7 @@ func main() {
 	w, err := wal.New(
 		wal.WithDir("./logs"),
 		wal.WithPrefix("examples-wal"),
-		wal.WithMaxSegmentSize(5*1024*1024), //  1MB (Log rotation size)
+		wal.WithMaxSegmentSize(5*1024*1024), //  5MB (Log rotation size)
 		wal.WithMaxSegmentFile(5),           // maximum number of segment files
 	)
 	if err != nil {

@@ -86,7 +86,7 @@ func New(opts ...WALOpt) (*WAL, error) {
 
 	cache, err := lru.New(wal.option.cacheSize)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	wal.lru = cache
 
