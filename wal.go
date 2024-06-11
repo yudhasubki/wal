@@ -215,16 +215,15 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 		if index >= currOffset && index < nextOffset {
 			offset := seg.offset[index-currOffset]
 			lastOffset := offset.offset + blockSize + int64(offset.length)
-			if w.ActiveSegmentIndex() == seg.index {
-				if offset.offset > seg.currSize {
-					byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : lastOffset-seg.currSize]
-					buf := bytes.NewReader(byt)
-					reader := bufio.NewReader(buf)
-					entry, err = seg.ReadEntry(reader)
-					if err == nil {
-						found = true
-						return
-					}
+
+			if w.ActiveSegmentIndex() == seg.index && offset.offset > seg.currSize {
+				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : lastOffset-seg.currSize]
+				buf := bytes.NewReader(byt)
+				reader := bufio.NewReader(buf)
+				entry, err = seg.ReadEntry(reader)
+				if err == nil {
+					found = true
+					return
 				}
 			}
 
