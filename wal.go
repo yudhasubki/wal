@@ -152,22 +152,37 @@ func (w *WAL) Write(data []byte) error {
 }
 
 func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
-	var (
-		currOffset = 0
-		index      = 0
-		stop       = false
-	)
-
 	for _, seg := range w.segments {
-		for {
-			offset := seg.offset[currOffset]
-			entry, err := seg.SeekOffset(offset.offset)
-			if err != nil {
-				if err == io.EOF {
-					break
+		var (
+			index = 0
+			stop  = false
+		)
+
+		for index < seg.Size() {
+			offset := seg.offset[index]
+			var entry *LogEntry
+
+			if seg.OnActiveBuffer(index) {
+				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
+				buf := bytes.NewReader(byt)
+				reader := bufio.NewReader(buf)
+
+				logEntry, err := seg.ReadEntry(reader)
+				if err != nil {
+					return err
 				}
 
-				return err
+				entry = logEntry
+			} else {
+				logEntry, err := seg.SeekOffset(offset.offset)
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+
+					return err
+				}
+				entry = logEntry
 			}
 
 			next := callback(index, entry)
@@ -177,7 +192,58 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 			}
 
 			index++
-			currOffset = currOffset + blockSize + int(offset.length)
+		}
+
+		if stop {
+			break
+		}
+	}
+
+	return nil
+}
+
+func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error {
+	for i := len(w.segments) - 1; i >= 0; i-- {
+		var (
+			seg   = w.segments[i]
+			index = seg.Size() - 1
+			stop  = false
+		)
+
+		for index >= 0 {
+			offset := seg.offset[index]
+			var entry *LogEntry
+
+			if seg.OnActiveBuffer(index) {
+				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
+				buf := bytes.NewReader(byt)
+				reader := bufio.NewReader(buf)
+
+				logEntry, err := seg.ReadEntry(reader)
+				if err != nil {
+					return err
+				}
+
+				entry = logEntry
+			} else {
+				logEntry, err := seg.SeekOffset(offset.offset)
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+
+					return err
+				}
+				entry = logEntry
+			}
+
+			next := callback(index, entry)
+			if !next {
+				stop = true
+				break
+			}
+
+			index--
 		}
 
 		if stop {
@@ -213,11 +279,10 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 	for _, seg := range w.segments {
 		nextOffset = nextOffset + len(seg.offset)
 		if index >= currOffset && index < nextOffset {
-			offset := seg.offset[index-currOffset]
-			lastOffset := offset.offset + blockSize + int64(offset.length)
-
-			if w.ActiveSegmentIndex() == seg.index && offset.offset > seg.currSize {
-				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : lastOffset-seg.currSize]
+			currIndex := index - currOffset
+			offset := seg.offset[currIndex]
+			if w.ActiveSegmentIndex() == seg.index && seg.OnActiveBuffer(currIndex) {
+				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
 				buf := bytes.NewReader(byt)
 				reader := bufio.NewReader(buf)
 				entry, err = seg.ReadEntry(reader)

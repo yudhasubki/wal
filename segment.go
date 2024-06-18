@@ -20,9 +20,17 @@ type Segment struct {
 	currSize int64
 }
 
+func (s *Segment) OnActiveBuffer(idx int) bool {
+	return s.offset[idx].offset > s.currSize || s.currSize == 0
+}
+
 type pos struct {
 	offset int64
 	length uint32
+}
+
+func (p *pos) EndOffset() int64 {
+	return p.offset + blockSize + int64(p.length)
 }
 
 func (s *Segment) Read() error {
@@ -99,4 +107,8 @@ func (s *Segment) SeekOffset(offset int64) (*LogEntry, error) {
 
 	reader := bufio.NewReader(s.fd)
 	return s.ReadEntry(reader)
+}
+
+func (s *Segment) Size() int {
+	return len(s.offset)
 }

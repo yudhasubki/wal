@@ -89,6 +89,19 @@ if err != nil {
 }
 ```
 
+#### Iterating From Tail Over WAL Entries
+To iterate from tail over all entries in the WAL, use the ```IterReverse``` method:
+
+```go
+err := logInstance.IterReverse(func(index int, entry *wal.LogEntry) bool {
+    fmt.Printf("Index: %d, Entry: %s\n", index, entry.Data)
+    return true // continue iteration
+})
+if err != nil {
+    log.Fatalf("Failed to iterate over WAL: %v", err)
+}
+```
+
 #### Flushing the Buffer 
 To flush the buffer and ensure all data is written to disk, use the ```Sync``` method:
 
