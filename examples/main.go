@@ -12,13 +12,14 @@ func main() {
 		wal.WithPrefix("examples-wal"),
 		wal.WithMaxSegmentSize(5*1024*1024), //  5MB (Log rotation size)
 		wal.WithMaxSegmentFile(5),           // maximum number of segment files
+		wal.WithMaxFileLifetime(3),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer w.Close()
 
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 200000; i++ {
 		data := fmt.Sprintf("log entry %d\n", i)
 		if err := w.Write([]byte(data)); err != nil {
 			fmt.Printf("Error writing to WAL: %v\n", err)

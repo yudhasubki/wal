@@ -34,14 +34,15 @@ type LogEntry struct {
 }
 
 type WAL struct {
-	mu           *sync.RWMutex
-	option       *WALOption
-	segmentIndex int
-	segmentFile  uint16
-	segments     []*Segment
-	buffer       *WALBuffer
-	lru          *lru.Cache
-	pos          int
+	mu            *sync.RWMutex
+	option        *WALOption
+	segmentIndex  int
+	segmentFile   uint16
+	segments      []*Segment
+	buffer        *WALBuffer
+	lru           *lru.Cache
+	pos           int
+	segmentNotify chan bool
 }
 
 type WALBuffer struct {
@@ -78,6 +79,7 @@ func New(opts ...WALOpt) (*WAL, error) {
 			buf: &bytes.Buffer{},
 			mu:  sync.Mutex{},
 		},
+		segmentNotify: make(chan bool, 1),
 	}
 
 	for _, o := range opts {
@@ -97,7 +99,6 @@ func New(opts ...WALOpt) (*WAL, error) {
 
 	err = wal.LoadSegments()
 	if err != nil {
-
 		return nil, err
 	}
 
@@ -106,6 +107,10 @@ func New(opts ...WALOpt) (*WAL, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if wal.option.maxFileLifetime > 0 {
+		go wal.janitor()
 	}
 
 	return wal, nil
@@ -411,6 +416,7 @@ func (w *WAL) Sync() error {
 	}
 
 	curr.currSize = stat.Size()
+	curr.modTime = stat.ModTime()
 
 	return nil
 }
@@ -454,16 +460,24 @@ func (w *WAL) flushBuffer() error {
 	}
 
 	if curr.size >= w.option.maxSegmentSize {
+		reachMaxFile := false
 		if len(w.segments)+1 > int(w.option.maxSegmentFile) {
 			err = w.deleteSegments()
 			if err != nil {
 				return err
 			}
+
+			reachMaxFile = true
 		}
 
 		err = w.createSegment()
 		if err != nil {
 			return err
+		}
+
+		// The janitor segment position will change because the old one was removed.
+		if reachMaxFile {
+			w.segmentNotify <- true
 		}
 	}
 
@@ -478,15 +492,31 @@ func (w *WAL) createSegment() error {
 	}
 
 	w.segments = append(w.segments, &Segment{
-		index:  w.segmentIndex,
-		path:   segPath,
-		size:   0,
-		fd:     segment,
-		writer: bufio.NewWriter(segment),
-		offset: make([]pos, 0),
+		index:   w.segmentIndex,
+		path:    segPath,
+		size:    0,
+		fd:      segment,
+		writer:  bufio.NewWriter(segment),
+		offset:  make([]pos, 0),
+		modTime: time.Now(),
 	})
 	w.segmentIndex++
 	w.segmentFile++
 
 	return nil
+}
+
+func (w *WAL) janitor() {
+	for {
+		seg := w.segments[0]
+		nextCleanup := seg.modTime.Add(time.Duration(w.option.maxFileLifetime*24) * time.Hour)
+		ticker := time.NewTicker(time.Duration(nextCleanup.Hour()) * time.Hour)
+
+		select {
+		case <-w.segmentNotify:
+			continue
+		case <-ticker.C:
+			w.option.janitorHook(seg)
+		}
+	}
 }

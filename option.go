@@ -1,12 +1,19 @@
 package wal
 
+import (
+	"log"
+	"os"
+)
+
 type WALOption struct {
-	prefix             string
+	cacheSize          int
 	dir                string
+	janitorHook        func(segment *Segment)
+	maxFileLifetime    int8
+	maxSegmentFile     uint16
 	maxSegmentSize     int64
 	maxWriteBufferSize int64
-	maxSegmentFile     uint16
-	cacheSize          int
+	prefix             string
 }
 
 var DefaultWalOption = &WALOption{
@@ -15,7 +22,19 @@ var DefaultWalOption = &WALOption{
 	maxSegmentSize:     20 * 1024 * 1024, // 20 MB (log rotation size)
 	maxSegmentFile:     10,               // maximum number of segment files or (-1 or 0) for keep the logs
 	maxWriteBufferSize: 1 * 1024 * 1024,
-	cacheSize:          10 * 1024 * 1024, // 10 MB (cache size)
+	cacheSize:          10 * 1024 * 1024,   // 10 MB (cache size)
+	maxFileLifetime:    0,                  // No janitor to cleanup the logs file
+	janitorHook:        DefaultJanitorHook, // The default behavior is to remove the segment files. For customization, you can add an alternative method.
+}
+
+// Remove the segment file
+var DefaultJanitorHook = func(seg *Segment) {
+	_ = seg.fd.Close()
+
+	err := os.Remove(seg.path)
+	if err != nil {
+		log.Printf("error remove segment %s cause error %s\n", seg.path, err.Error())
+	}
 }
 
 type WALOpt func(opt *WALOption)
@@ -41,5 +60,11 @@ func WithMaxSegmentSize(size int64) WALOpt {
 func WithMaxSegmentFile(size uint16) WALOpt {
 	return func(opt *WALOption) {
 		opt.maxSegmentFile = size
+	}
+}
+
+func WithMaxFileLifetime(lifetime int8) WALOpt {
+	return func(opt *WALOption) {
+		opt.maxFileLifetime = lifetime
 	}
 }
