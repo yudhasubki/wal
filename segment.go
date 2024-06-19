@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"time"
 )
 
 // Segment represents a signgle segment file
@@ -18,6 +19,7 @@ type Segment struct {
 	writer   *bufio.Writer
 	offset   []pos
 	currSize int64
+	modTime  time.Time
 }
 
 func (s *Segment) OnActiveBuffer(idx int) bool {

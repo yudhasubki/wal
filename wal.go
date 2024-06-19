@@ -320,11 +320,13 @@ func (w *WAL) LoadSegments() error {
 			}
 
 			segment := &Segment{
-				index:  w.segmentIndex,
-				path:   path,
-				fd:     segFile,
-				writer: bufio.NewWriter(segFile),
-				size:   info.Size(),
+				index:    w.segmentIndex,
+				path:     path,
+				fd:       segFile,
+				writer:   bufio.NewWriter(segFile),
+				size:     info.Size(),
+				currSize: info.Size(),
+				modTime:  info.ModTime(),
 			}
 
 			err = segment.Read()

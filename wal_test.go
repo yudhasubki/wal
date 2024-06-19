@@ -56,6 +56,25 @@ func TestWrite(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%s %d", testLogEntryMessage, 500000), string(entry.Data))
 		})
 	})
+
+	t.Run("Write - Sync - Write", func(t *testing.T) {
+		runLayoutTest(t, 50, func(wal *WAL) {
+			entry, err := wal.ReadIndex(wal.CurrentPosition())
+			require.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("%s 50", testLogEntryMessage), string(entry.Data))
+
+			err = wal.Sync()
+			require.NoError(t, err)
+
+			for i := 51; i <= 100; i++ {
+				wal.Write([]byte(fmt.Sprintf("%s %d", testLogEntryMessage, i)))
+			}
+
+			entry, err = wal.ReadIndex(wal.CurrentPosition())
+			require.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("%s 100", testLogEntryMessage), string(entry.Data))
+		})
+	})
 }
 
 func TestIter(t *testing.T) {

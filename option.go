@@ -13,7 +13,7 @@ var DefaultWalOption = &WALOption{
 	prefix:             "wal",
 	dir:                "/var/logs/",
 	maxSegmentSize:     20 * 1024 * 1024, // 20 MB (log rotation size)
-	maxSegmentFile:     10,               // maximum number of segment files
+	maxSegmentFile:     10,               // maximum number of segment files or (-1 or 0) for keep the logs
 	maxWriteBufferSize: 1 * 1024 * 1024,
 	cacheSize:          10 * 1024 * 1024, // 10 MB (cache size)
 }

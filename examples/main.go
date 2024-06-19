@@ -18,7 +18,7 @@ func main() {
 	}
 	defer w.Close()
 
-	for i := 0; i < 200000; i++ {
+	for i := 0; i < 50; i++ {
 		data := fmt.Sprintf("log entry %d\n", i)
 		if err := w.Write([]byte(data)); err != nil {
 			fmt.Printf("Error writing to WAL: %v\n", err)
@@ -51,7 +51,6 @@ func main() {
 	}
 	fmt.Println("Mid Entry Position ", string(e.Data))
 
-	fmt.Println(w.CurrentPosition())
 	e, err = w.ReadIndex(w.CurrentPosition())
 	if err != nil {
 		panic(err)
