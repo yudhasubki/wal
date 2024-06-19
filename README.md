@@ -9,6 +9,7 @@ This package provides a robust Write-Ahead Log (WAL) implementation in Go. It en
 - **LRU Cache**: Integrates an LRU cache to improve read performance.
 - **Checksum Validation**: Ensures data integrity using CRC32 checksums.
 - **Configurable Options**: Provides configurable options for log directory, segment size, buffer size, and more.
+- **Custom Janitor Hook**: Allows the use of custom functions for cleaning up resources, such as uploading segments to cloud storage.
 
 ### Configuration Options
 You can configure the WAL instance using the following options:
@@ -18,6 +19,8 @@ You can configure the WAL instance using the following options:
 - ```WithMaxSegmentSize(size int64)```: Sets the maximum size of a log segment.
 - ```WithMaxSegmentFile(size uint16)```: Sets the maximum number of segment files.
 - ```WithMaxWriteBufferSize(size int64)```: Sets the maximum size of the write buffer.
+- ```WithMaxFileLifetime(size int8)```: Sets the maximum file lifetime.
+- ```WithCustomJanitorHook(hook func(segment *Segment))```: Sets a custom janitor hook, such as uploading to cloud storage or other actions.
 
 ### Installation
 
@@ -42,8 +45,10 @@ func main() {
     logInstance, err := wal.New(
 		wal.WithDir("./logs"),
 		wal.WithPrefix("examples-wal"),
-		wal.WithMaxSegmentSize(5*1024*1024), //  1MB (Log rotation size)
-		wal.WithMaxSegmentFile(5),           // maximum number of segment files
+		wal.WithMaxSegmentSize(5*1024*1024), 				// 5MB (Log rotation size)
+		wal.WithMaxSegmentFile(5),           				// maximum number of segment files
+		wal.WithMaxFileLifetime(3), 						// maximum log file lifetime: 3 days
+		wal.WithCustomJanitorHook(wal.DefaultJanitorHook),	// custom janitor hook
 	)
 	if err != nil {
 		panic(err)

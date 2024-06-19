@@ -68,3 +68,9 @@ func WithMaxFileLifetime(lifetime int8) WALOpt {
 		opt.maxFileLifetime = lifetime
 	}
 }
+
+func WithCustomJanitorHook(hook func(seg *Segment)) WALOpt {
+	return func(opt *WALOption) {
+		opt.janitorHook = hook
+	}
+}

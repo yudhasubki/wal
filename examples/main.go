@@ -13,6 +13,7 @@ func main() {
 		wal.WithMaxSegmentSize(5*1024*1024), //  5MB (Log rotation size)
 		wal.WithMaxSegmentFile(5),           // maximum number of segment files
 		wal.WithMaxFileLifetime(3),
+		wal.WithCustomJanitorHook(wal.DefaultJanitorHook),
 	)
 	if err != nil {
 		panic(err)
