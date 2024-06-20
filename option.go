@@ -19,9 +19,9 @@ type WALOption struct {
 var DefaultWalOption = &WALOption{
 	prefix:             "wal",
 	dir:                "/var/logs/",
-	maxSegmentSize:     20 * 1024 * 1024, // 20 MB (log rotation size)
-	maxSegmentFile:     10,               // maximum number of segment files or (-1 or 0) for keep the logs
-	maxWriteBufferSize: 1 * 1024 * 1024,
+	maxSegmentSize:     20 * 1024 * 1024,   // 20 MB (log rotation size)
+	maxSegmentFile:     10,                 // maximum number of segment files or (-1 or 0) for keep the logs
+	maxWriteBufferSize: 32 * 1024,          // 32KB buffer size
 	cacheSize:          10 * 1024 * 1024,   // 10 MB (cache size)
 	maxFileLifetime:    0,                  // No janitor to cleanup the logs file
 	janitorHook:        DefaultJanitorHook, // The default behavior is to remove the segment files. For customization, you can add an alternative method.
@@ -60,6 +60,16 @@ func WithMaxSegmentSize(size int64) WALOpt {
 func WithMaxSegmentFile(size uint16) WALOpt {
 	return func(opt *WALOption) {
 		opt.maxSegmentFile = size
+	}
+}
+
+func WithMaxWriteBufferSize(size int64) WALOpt {
+	return func(opt *WALOption) {
+		if size > 64*1024 {
+			size = 64 * 1024
+		}
+
+		opt.maxWriteBufferSize = size
 	}
 }
 
