@@ -20,6 +20,21 @@ type Segment struct {
 	offset   []pos
 	currSize int64
 	modTime  time.Time
+	closed   bool
+}
+
+func (s *Segment) Open() error {
+	f, err := os.OpenFile(s.path, recoverLogPermission, 0644)
+	if err != nil {
+		return err
+	}
+	s.fd = f
+
+	return err
+}
+
+func (s *Segment) Close() error {
+	return s.fd.Close()
 }
 
 func (s *Segment) OnActiveBuffer(idx int) bool {

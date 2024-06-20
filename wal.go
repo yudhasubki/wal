@@ -21,7 +21,7 @@ import (
 const (
 	blockSize            = 16
 	createLogPermission  = os.O_APPEND | os.O_CREATE | os.O_RDWR
-	recoverLogPermission = os.O_RDWR
+	recoverLogPermission = os.O_RDONLY
 )
 
 type LogEntry struct {
@@ -30,7 +30,6 @@ type LogEntry struct {
 	Data      []byte
 	Checksum  uint32
 	Timestamp int64
-	Index     int64
 }
 
 type WAL struct {
@@ -102,11 +101,9 @@ func New(opts ...WALOpt) (*WAL, error) {
 		return nil, err
 	}
 
-	if len(wal.segments) == 0 {
-		err = wal.createSegment()
-		if err != nil {
-			return nil, err
-		}
+	err = wal.createSegment()
+	if err != nil {
+		return nil, err
 	}
 
 	if wal.option.maxFileLifetime > 0 {
@@ -163,6 +160,13 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 			stop  = false
 		)
 
+		if seg.closed {
+			err := seg.Open()
+			if err != nil {
+				return err
+			}
+		}
+
 		for index < seg.Size() {
 			offset := seg.offset[index]
 			var entry *LogEntry
@@ -199,6 +203,10 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 			index++
 		}
 
+		if seg.closed {
+			seg.Close()
+		}
+
 		if stop {
 			break
 		}
@@ -214,6 +222,13 @@ func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error 
 			index = seg.Size() - 1
 			stop  = false
 		)
+
+		if seg.closed {
+			err := seg.Open()
+			if err != nil {
+				return err
+			}
+		}
 
 		for index >= 0 {
 			offset := seg.offset[index]
@@ -251,6 +266,10 @@ func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error 
 			index--
 		}
 
+		if seg.closed {
+			seg.Close()
+		}
+
 		if stop {
 			break
 		}
@@ -286,7 +305,7 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 		if index >= currOffset && index < nextOffset {
 			currIndex := index - currOffset
 			offset := seg.offset[currIndex]
-			if w.ActiveSegmentIndex() == seg.index && seg.OnActiveBuffer(currIndex) {
+			if !seg.closed && seg.OnActiveBuffer(currIndex) {
 				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
 				buf := bytes.NewReader(byt)
 				reader := bufio.NewReader(buf)
@@ -295,14 +314,20 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 					found = true
 					return
 				}
-			}
+			} else {
+				err = seg.Open()
+				if err != nil {
+					return
+				}
+				defer seg.Close()
 
-			entry, err = seg.SeekOffset(offset.offset)
-			if err == nil {
-				found = true
-			}
+				entry, err = seg.SeekOffset(offset.offset)
+				if err == nil {
+					found = true
+				}
 
-			return
+				return
+			}
 		} else {
 			currOffset = nextOffset
 		}
@@ -314,7 +339,7 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 func (w *WAL) LoadSegments() error {
 	return filepath.Walk(w.option.dir, func(path string, info fs.FileInfo, err error) error {
 		if !info.IsDir() && filepath.Ext(path) == ".log" {
-			segFile, err := os.OpenFile(path, createLogPermission, 0644)
+			segFile, err := os.OpenFile(path, recoverLogPermission, 0644)
 			if err != nil {
 				return err
 			}
@@ -332,6 +357,7 @@ func (w *WAL) LoadSegments() error {
 				size:     info.Size(),
 				currSize: info.Size(),
 				modTime:  info.ModTime(),
+				closed:   true,
 			}
 
 			err = segment.Read()
@@ -343,6 +369,8 @@ func (w *WAL) LoadSegments() error {
 			w.segmentIndex++
 			w.segmentFile++
 			w.pos += len(segment.offset)
+
+			segFile.Close()
 		}
 
 		return nil
@@ -475,6 +503,8 @@ func (w *WAL) flushBuffer() error {
 			return err
 		}
 
+		curr.closed = true
+
 		// The janitor segment position will change because the old one was removed.
 		if reachMaxFile {
 			w.segmentNotify <- true
@@ -499,6 +529,7 @@ func (w *WAL) createSegment() error {
 		writer:  bufio.NewWriter(segment),
 		offset:  make([]pos, 0),
 		modTime: time.Now(),
+		closed:  false,
 	})
 	w.segmentIndex++
 	w.segmentFile++
