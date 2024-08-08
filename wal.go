@@ -49,6 +49,21 @@ type WALBuffer struct {
 	mu  sync.Mutex
 }
 
+var walBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &WALBuffer{
+			buf: &bytes.Buffer{},
+			mu:  sync.Mutex{},
+		}
+	},
+}
+
+var bufioReaderPool = sync.Pool{
+	New: func() interface{} {
+		return bufio.NewReader(nil)
+	},
+}
+
 func (b *WALBuffer) Write(data []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -72,12 +87,9 @@ func (b *WALBuffer) ReadFromBuffer() *bufio.Reader {
 
 func New(opts ...WALOpt) (*WAL, error) {
 	wal := &WAL{
-		mu:     new(sync.RWMutex),
-		option: DefaultWalOption,
-		buffer: &WALBuffer{
-			buf: &bytes.Buffer{},
-			mu:  sync.Mutex{},
-		},
+		mu:            new(sync.RWMutex),
+		option:        DefaultWalOption,
+		buffer:        walBufferPool.Get().(*WALBuffer),
 		segmentNotify: make(chan bool, 1),
 	}
 
@@ -150,6 +162,9 @@ func (w *WAL) Write(data []byte) error {
 		}
 	}
 
+	walBufferPool.Put(w.buffer)
+	w.buffer = walBufferPool.Get().(*WALBuffer)
+
 	return nil
 }
 
@@ -173,14 +188,13 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 
 			if seg.OnActiveBuffer(index) {
 				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
-				buf := bytes.NewReader(byt)
-				reader := bufio.NewReader(buf)
-
+				reader := bufioReaderPool.Get().(*bufio.Reader)
+				reader.Reset(bytes.NewReader(byt))
 				logEntry, err := seg.ReadEntry(reader)
+				bufioReaderPool.Put(reader)
 				if err != nil {
 					return err
 				}
-
 				entry = logEntry
 			} else {
 				logEntry, err := seg.SeekOffset(offset.offset)
@@ -188,7 +202,6 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 					if err == io.EOF {
 						break
 					}
-
 					return err
 				}
 				entry = logEntry
@@ -236,14 +249,13 @@ func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error 
 
 			if seg.OnActiveBuffer(index) {
 				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
-				buf := bytes.NewReader(byt)
-				reader := bufio.NewReader(buf)
-
+				reader := bufioReaderPool.Get().(*bufio.Reader)
+				reader.Reset(bytes.NewReader(byt))
 				logEntry, err := seg.ReadEntry(reader)
+				bufioReaderPool.Put(reader)
 				if err != nil {
 					return err
 				}
-
 				entry = logEntry
 			} else {
 				logEntry, err := seg.SeekOffset(offset.offset)
@@ -251,7 +263,6 @@ func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error 
 					if err == io.EOF {
 						break
 					}
-
 					return err
 				}
 				entry = logEntry
@@ -307,9 +318,10 @@ func (w *WAL) ReadIndex(index int) (entry *LogEntry, err error) {
 			offset := seg.offset[currIndex]
 			if !seg.closed && seg.OnActiveBuffer(currIndex) {
 				byt := w.buffer.buf.Bytes()[offset.offset-seg.currSize : offset.EndOffset()-seg.currSize]
-				buf := bytes.NewReader(byt)
-				reader := bufio.NewReader(buf)
+				reader := bufioReaderPool.Get().(*bufio.Reader)
+				reader.Reset(bytes.NewReader(byt))
 				entry, err = seg.ReadEntry(reader)
+				bufioReaderPool.Put(reader)
 				if err == nil {
 					found = true
 					return
