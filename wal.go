@@ -169,6 +169,9 @@ func (w *WAL) Write(data []byte) error {
 }
 
 func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
 	for _, seg := range w.segments {
 		var (
 			index = 0
@@ -229,6 +232,9 @@ func (w *WAL) Iter(callback func(index int, entry *LogEntry) bool) error {
 }
 
 func (w *WAL) IterReverse(callback func(index int, entry *LogEntry) bool) error {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
 	for i := len(w.segments) - 1; i >= 0; i-- {
 		var (
 			seg   = w.segments[i]

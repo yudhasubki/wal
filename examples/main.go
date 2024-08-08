@@ -41,7 +41,7 @@ func main() {
 		panic(err)
 	}
 
-	e, err := w.ReadIndex(1)
+	e, err := w.ReadIndex(0)
 	if err != nil {
 		panic(err)
 	}
